@@ -1,0 +1,55 @@
+# format options
+
+--allman false
+--binarygrouping 4,8
+--commas always
+--decimalgrouping 3,6
+--elseposition same-line
+--voidtype void
+--modifier-order nonisolated, nonisolated(unsafe), override, private, fileprivate, internal, package, public, open, private(set), fileprivate(set), internal(set), package(set), public(set), open(set), final, dynamic, optional, required, convenience, indirect, isolated, lazy, weak, unowned, unowned(safe), unowned(unsafe), static, class, borrowing, consuming, mutating, nonmutating, prefix, infix, postfix, async
+--exponentcase lowercase
+--exponentgrouping disabled
+--extension-acl on-declarations
+--fractiongrouping disabled
+--header ignore
+--hexgrouping 4,8
+--hexliteralcase uppercase
+--ifdef indent
+--indent 4
+--indentcase false
+--importgrouping testable-bottom
+--linebreaks lf
+--octalgrouping 4,8
+--operatorfunc spaced
+--patternlet hoist
+--ranges spaced
+--semicolons inline
+--stripunusedargs always
+--swiftversion 5.7
+--trimwhitespace always
+--wraparguments before-first
+--wrapcollections preserve
+--wrapconditions after-first
+--max-width 90
+--trailing-commas always
+
+# rules
+
+--enable unusedPrivateDeclarations
+--enable emptyExtensions
+--enable isEmpty
+--enable docComments
+# --enable noForceTryInTests
+# --enable noForceUnwrapInTests
+# --enable noGuardInTests
+--enable preferFinalClasses
+--enable redundantAsync
+--enable redundantEquatable
+--enable redundantMemberwiseInit
+--enable redundantVariable
+--enable redundantThrows
+--wraparguments before-first
+--wrapparameters before-first
+--wrapconditions after-first
+--wrapcollections preserve
+--trailing-commas always
