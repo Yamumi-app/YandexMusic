@@ -45,16 +45,18 @@ public struct SearchMixedResponse: Sendable, Decodable {
         perPage = try container.decodeIfPresent(Int.self, forKey: .perPage)
         responseType = try container.decodeIfPresent(String.self, forKey: .responseType)
 
-        let decodedResults = try container.decodeIfPresent(
-            [RawSearchResult].self,
-            forKey: .results
-        ) ?? []
+        let decodedResults =
+            try container.decodeIfPresent(
+                [RawSearchResult].self,
+                forKey: .results
+            ) ?? []
         results = decodedResults.compactMap(\.value)
 
-        let decodedBestResults = try container.decodeIfPresent(
-            [RawSearchBestResult].self,
-            forKey: .bestResults
-        ) ?? []
+        let decodedBestResults =
+            try container.decodeIfPresent(
+                [RawSearchBestResult].self,
+                forKey: .bestResults
+            ) ?? []
         bestResults = decodedBestResults.compactMap(\.value)
     }
 }
@@ -66,23 +68,46 @@ public enum SearchResult: Sendable {
 }
 
 public enum SearchBestResult: Sendable {
+    case album(SearchBestAlbum)
+    case artist(SearchBestArtist)
     case track(Track)
-    case artistsRelated(SearchBestArtistsRelated)
 }
 
-public struct SearchBestArtistsRelated: Sendable, Decodable {
-    public let title: String?
-    public let artists: [Artist]
+public struct SearchBestAlbum: Sendable, Decodable {
+    public let album: SearchBestAlbumDetails
+    public let artists: [Artist]?
 
     private enum CodingKeys: String, CodingKey {
-        case title
+        case album
         case artists
     }
+}
 
-    public init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        title = try container.decodeIfPresent(String.self, forKey: .title)
-        artists = try container.decodeIfPresent([Artist].self, forKey: .artists) ?? []
+public struct SearchBestAlbumDetails: Sendable, Decodable {
+    public let id: Int
+    public let title: String?
+    public let cover: SearchBestCover?
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case title
+        case cover
+    }
+}
+
+public struct SearchBestArtist: Sendable, Decodable {
+    public let artist: Artist
+
+    private enum CodingKeys: String, CodingKey {
+        case artist
+    }
+}
+
+public struct SearchBestCover: Sendable, Decodable {
+    public let uri: URLTemplate?
+
+    private enum CodingKeys: String, CodingKey {
+        case uri
     }
 }
 
@@ -130,8 +155,9 @@ private struct RawSearchBestResult: Decodable {
 
     private enum CodingKeys: String, CodingKey {
         case type
+        case bestResultAlbum
+        case bestResultArtist
         case bestResultTrack
-        case bestResultArtistsRelated
     }
 
     init(from decoder: Decoder) throws {
@@ -139,21 +165,30 @@ private struct RawSearchBestResult: Decodable {
         let type = try container.decodeIfPresent(String.self, forKey: .type)
 
         switch type {
+        case "best_result_album":
+            if let album = try container.decodeIfPresent(
+                SearchBestAlbum.self,
+                forKey: .bestResultAlbum
+            ) {
+                value = .album(album)
+            } else {
+                value = nil
+            }
+        case "best_result_artist":
+            if let artist = try container.decodeIfPresent(
+                SearchBestArtist.self,
+                forKey: .bestResultArtist
+            ) {
+                value = .artist(artist)
+            } else {
+                value = nil
+            }
         case "best_result_track":
             if let track = try container.decodeIfPresent(
                 Track.self,
                 forKey: .bestResultTrack
             ) {
                 value = .track(track)
-            } else {
-                value = nil
-            }
-        case "best_result_artists_related":
-            if let artistsRelated = try container.decodeIfPresent(
-                SearchBestArtistsRelated.self,
-                forKey: .bestResultArtistsRelated
-            ) {
-                value = .artistsRelated(artistsRelated)
             } else {
                 value = nil
             }

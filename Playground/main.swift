@@ -453,15 +453,15 @@ struct Playground {
             print("Best results:")
             for result in response.bestResults {
                 switch result {
+                case let .album(bestAlbum):
+                    let title = bestAlbum.album.title ?? "Unknown album"
+                    let artists =
+                        bestAlbum.artists?.map(\.name).joined(separator: ", ") ?? "Unknown artist"
+                    print("  best album: \(title) - \(artists)")
+                case let .artist(bestArtist):
+                    print("  best artist: \(bestArtist.artist.name)")
                 case let .track(track):
-                    print("  \(describeTrack(track))")
-                case let .artistsRelated(artistsRelated):
-                    let title = artistsRelated.title ?? "Artists related"
-                    let artists = artistsRelated.artists
-                        .map(\.name)
-                        .joined(separator: ", ")
-                    let artistsText = artists.isEmpty ? "Unknown artists" : artists
-                    print("  artists: \(title) - \(artistsText)")
+                    print("  best track: \(describeTrack(track))")
                 }
             }
         }
