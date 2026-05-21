@@ -11,7 +11,7 @@ public enum CoverSize: String {
 }
 
 extension URLTemplate {
-    func render(with size: CoverSize) -> URL? {
+    public func render(with size: CoverSize) -> URL? {
         let replaced = replacingOccurrences(of: "%%", with: size.rawValue)
         let urlString = replaced.hasPrefix("http") ? replaced : "https://\(replaced)"
         return URL(string: urlString)
