@@ -50,7 +50,7 @@ struct Playground {
                 _ = try await playPlaylist(
                     with: api,
                     playlistLink:
-                    "https://music.yandex.ru/playlists/9fffe273-1950-b502-a727-8e6a6319d410",
+                        "https://music.yandex.ru/playlists/9fffe273-1950-b502-a727-8e6a6319d410",
                     limit: 10
                 )
             case "album":
@@ -74,6 +74,11 @@ struct Playground {
                     fatalError("Usage: yandexmusic-playground search <text>")
                 }
                 try await printSearchResults(with: api, text: text)
+            case "download":
+                guard CommandLine.arguments.count >= 3 else {
+                    fatalError("Usage: yandexmusic-playground download <url>")
+                }
+                try await download(with: api, link: CommandLine.arguments[2])
             default:
                 fatalError("Unknown subcommand: \(subcommand)")
             }
@@ -85,9 +90,9 @@ struct Playground {
     static func parseSearchText(from arguments: [String]) -> String? {
         let text =
             arguments
-                .dropFirst(2)
-                .joined(separator: " ")
-                .trimmingCharacters(in: .whitespacesAndNewlines)
+            .dropFirst(2)
+            .joined(separator: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
         if text.isEmpty {
             return nil
         }
@@ -101,6 +106,161 @@ struct Playground {
     struct PlayedTrack {
         let id: String
         let finishEvent: RotorSessionEvent
+    }
+
+    enum DownloadError: Error {
+        case noAvailableQuality(trackID: String)
+    }
+
+    static let downloadQualities: [AudioQuality] = [.lossless, .normal, .low]
+
+    static func download(
+        with api: YandexMusicClient,
+        link: String
+    ) async throws {
+        guard let url = YandexMusicURL(link) else {
+            fatalError("Unsupported Yandex Music URL: \(link)")
+        }
+
+        let storagePath = Self().demoStoragePath.appendingPathComponent("download")
+        try FileManager.default.createDirectory(
+            at: storagePath,
+            withIntermediateDirectories: true
+        )
+
+        switch url {
+        case .track(albumID: _, trackID: let trackID):
+            let track = try await api.getTrack(id: trackID)
+            try await downloadTrack(
+                with: api,
+                trackID: trackID,
+                track: track,
+                to: storagePath
+            )
+        case .album(albumID: let albumID):
+            let album = try await api.getAlbumWithTracks(albumID: albumID)
+            let albumPath = storagePath.appendingPathComponent(
+                safeFileName(album.title ?? "album-\(albumID)")
+            )
+            try FileManager.default.createDirectory(
+                at: albumPath,
+                withIntermediateDirectories: true
+            )
+            for track in album.allTracks {
+                try await downloadTrack(
+                    with: api,
+                    trackID: track.id.value,
+                    track: track,
+                    to: albumPath
+                )
+            }
+        case .playlist(uuid: let uuid):
+            let playlist = try await api.getPlaylist(uuid: uuid)
+            try await downloadPlaylist(playlist, with: api, to: storagePath)
+        case .userPlaylist(ownerUID: let ownerUID, kind: let kind):
+            let playlist = try await api.getPlaylist(ownerUID: ownerUID, kind: kind)
+            try await downloadPlaylist(playlist, with: api, to: storagePath)
+        case .artist(artistID: let artistID):
+            let tracks = try await api.getArtistTracks(artistID: artistID)
+            let artistPath = storagePath.appendingPathComponent("artist-\(artistID)")
+            try FileManager.default.createDirectory(
+                at: artistPath,
+                withIntermediateDirectories: true
+            )
+            for track in tracks {
+                try await downloadTrack(
+                    with: api,
+                    trackID: track.id.value,
+                    track: track,
+                    to: artistPath
+                )
+            }
+        }
+    }
+
+    static func downloadPlaylist(
+        _ playlist: Playlist,
+        with api: YandexMusicClient,
+        to storagePath: URL
+    ) async throws {
+        guard let tracks = playlist.tracks else {
+            fatalError("Playlist has no tracks")
+        }
+
+        let playlistPath = storagePath.appendingPathComponent(
+            safeFileName(playlist.title ?? "playlist-\(playlist.kind)")
+        )
+        try FileManager.default.createDirectory(
+            at: playlistPath,
+            withIntermediateDirectories: true
+        )
+
+        for item in tracks {
+            try await downloadTrack(
+                with: api,
+                trackID: item.id.value,
+                track: item.track,
+                to: playlistPath
+            )
+        }
+    }
+
+    static func downloadTrack(
+        with api: YandexMusicClient,
+        trackID: String,
+        track: Track?,
+        to storagePath: URL
+    ) async throws {
+        print("Downloading track \(trackID)")
+        let (quality, trackData) = try await getBestTrackData(with: api, id: trackID)
+        let fileName = fileName(
+            for: track,
+            trackID: trackID,
+            fileExtension: trackData.codec.fileExtension
+        )
+        let trackURL = storagePath.appendingPathComponent(fileName)
+        try trackData.data.write(to: trackURL)
+        print(
+            "Saved \(trackURL.path) (quality: \(quality.rawValue), codec: \(trackData.codec.rawValue), bitrate: \(trackData.bitrate))"
+        )
+    }
+
+    static func getBestTrackData(
+        with api: YandexMusicClient,
+        id: String
+    ) async throws -> (AudioQuality, FileDownloadResult) {
+        var lastError: Error?
+        for quality in downloadQualities {
+            do {
+                return (quality, try await api.getTrackData(id: id, quality: quality))
+            } catch {
+                lastError = error
+            }
+        }
+        throw lastError ?? DownloadError.noAvailableQuality(trackID: id)
+    }
+
+    static func fileName(
+        for track: Track?,
+        trackID: String,
+        fileExtension: String
+    ) -> String {
+        let title = track?.title ?? trackID
+        let artists = track?.artistNames ?? ""
+        let baseName = artists.isEmpty ? title : "\(artists) - \(title)"
+        return "\(safeFileName(baseName)) [\(safeFileName(trackID))].\(fileExtension)"
+    }
+
+    static func safeFileName(_ value: String) -> String {
+        let invalidCharacters = CharacterSet(charactersIn: "/\\?%*|\"<>:")
+            .union(.newlines)
+            .union(.controlCharacters)
+        let fileName =
+            value
+            .components(separatedBy: invalidCharacters)
+            .joined(separator: "_")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return fileName.isEmpty ? "unknown" : fileName
     }
 
     static func playRotor(
@@ -189,7 +349,7 @@ struct Playground {
                     previousBatchID: batchID,
                     events: batchPlayedTracks.map(\.finishEvent),
                     queue:
-                    playedTracks
+                        playedTracks
                         .suffix(10)
                         .reversed()
                         .map(\.id)
@@ -250,9 +410,9 @@ struct Playground {
         let playlistURL = YandexMusicURL(playlistLink)!
         var playlist: Playlist?
         switch playlistURL {
-        case let .playlist(uuid):
+        case .playlist(let uuid):
             playlist = try await api.getPlaylist(uuid: uuid)
-        case let .userPlaylist(ownerUID, kind):
+        case .userPlaylist(let ownerUID, let kind):
             playlist = try await api.getPlaylist(ownerUID: ownerUID, kind: kind)
         default:
             fatalError("Unsupported playlist URL: \(playlistLink)")
@@ -307,7 +467,7 @@ struct Playground {
         limit: Int
     ) async throws -> [PlayedTrack] {
         let albumURL = YandexMusicURL(albumLink)!
-        guard case let .album(albumID: albumID) = albumURL else {
+        guard case .album(albumID: let albumID) = albumURL else {
             fatalError("Unsupported album URL: \(albumLink)")
         }
         let storagePath = Self().demoStoragePath.appendingPathComponent("album")
@@ -353,7 +513,7 @@ struct Playground {
         limit: Int
     ) async throws -> [PlayedTrack] {
         let artistURL = YandexMusicURL(artistLink)!
-        guard case let .artist(artistID: artistID) = artistURL else {
+        guard case .artist(artistID: let artistID) = artistURL else {
             fatalError("Unsupported artist URL: \(artistLink)")
         }
         let storagePath = Self().demoStoragePath.appendingPathComponent("artist")
@@ -430,7 +590,7 @@ struct Playground {
         artistLink: String
     ) async throws {
         let artistURL = YandexMusicURL(artistLink)!
-        guard case let .artist(artistID: artistID) = artistURL else {
+        guard case .artist(artistID: let artistID) = artistURL else {
             fatalError("Unsupported artist URL: \(artistLink)")
         }
         let albums = try await api.getArtistAlbums(artistID: artistID)
@@ -453,14 +613,14 @@ struct Playground {
             print("Best results:")
             for result in response.bestResults {
                 switch result {
-                case let .album(bestAlbum):
+                case .album(let bestAlbum):
                     let title = bestAlbum.album.title ?? "Unknown album"
                     let artists =
                         bestAlbum.artists?.map(\.name).joined(separator: ", ") ?? "Unknown artist"
                     print("  best album: \(title) - \(artists)")
-                case let .artist(bestArtist):
+                case .artist(let bestArtist):
                     print("  best artist: \(bestArtist.artist.name)")
-                case let .track(track):
+                case .track(let track):
                     print("  best track: \(describeTrack(track))")
                 }
             }
@@ -470,17 +630,17 @@ struct Playground {
             print("Results:")
             for result in response.results.prefix(10) {
                 switch result {
-                case let .track(track):
+                case .track(let track):
                     print("  \(describeTrack(track))")
-                case let .album(album):
+                case .album(let album):
                     let title = album.title ?? "Unknown album"
                     let artists =
                         album.artistNames.isEmpty
-                            ? "Unknown artist"
-                            : album
+                        ? "Unknown artist"
+                        : album
                             .artistNames
                     print("  album: \(title) - \(artists)")
-                case let .artist(artist):
+                case .artist(let artist):
                     print("  artist: \(artist.name)")
                 }
             }
@@ -519,7 +679,7 @@ struct Playground {
     }
 
     static func simulateProcrastinatoryListening() async throws -> Double {
-        let playedSeconds = Double.random(in: 0 ..< 15)
+        let playedSeconds = Double.random(in: 0..<15)
         try await Task.sleep(for: .seconds(playedSeconds))
         return playedSeconds
     }
