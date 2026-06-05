@@ -336,6 +336,15 @@ public final class YandexMusicClient: @unchecked Sendable {
         return results
     }
 
+    // MARK: - Wheel
+
+    public func getWheel(
+        seeds: [String] = [StationSeed.onYourWave.full],
+        feedbacks: [WheelFeedback] = []
+    ) async throws -> WheelResponse {
+        try await api.getWheel(seeds: seeds, feedbacks: feedbacks)
+    }
+
     // MARK: - Rotor
 
     public func createRotorSession(
@@ -356,6 +365,13 @@ public final class YandexMusicClient: @unchecked Sendable {
             seeds: seeds, queue: queue
         )
         return (sessionID, batch)
+    }
+
+    public func createRotorSession(
+        wheelItem: WheelItem,
+        queue: [String]
+    ) async throws -> (String, RotorSessionBatch) {
+        try await createRotorSession(seeds: wheelItem.data.wave.seeds, queue: queue)
     }
 
     public func sendRotorSessionFeedback(

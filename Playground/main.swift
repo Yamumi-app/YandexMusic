@@ -30,6 +30,10 @@ struct Playground {
                     settings: .onYourWave,
                     limit: 10
                 )
+            case "wheel":
+                try await printWheel(with: api)
+            case "wheel-rotor":
+                try await startRotorFromWheel(with: api)
             case "liked":
                 _ = try await playLikedTracks(
                     with: api,
@@ -306,7 +310,7 @@ struct Playground {
 
     static func playRotor(
         with api: YandexMusicClient,
-        settings _: RotorSettings,
+        settings: RotorSettings,
         limit: Int
     ) async throws -> [PlayedTrack] {
         if limit <= 0 {
@@ -321,7 +325,7 @@ struct Playground {
         )
 
         let (sessionID, firstBatch) = try await api.createRotorSession(
-            settings: .onYourWave, queue: []
+            settings: settings, queue: []
         )
         var batchID = firstBatch.batchId
         var batch = firstBatch.sequence
@@ -401,6 +405,42 @@ struct Playground {
             }
         }
         return playedTracks
+    }
+
+    static func printWheel(with api: YandexMusicClient) async throws {
+        let wheel = try await api.getWheel()
+        printWheel(wheel, title: "Wheel")
+
+        let feedbacks = wheel.items.enumerated().map { position, item in
+            WheelFeedback.view(
+                wheelId: wheel.wheelId,
+                item: item,
+                position: position
+            )
+        }
+        let nextWheel = try await api.getWheel(feedbacks: feedbacks)
+        printWheel(nextWheel, title: "Next wheel")
+    }
+
+    static func printWheel(_ wheel: WheelResponse, title: String) {
+        print("\(title): \(wheel.wheelId)")
+        for (position, item) in wheel.items.enumerated() {
+            let seeds = item.data.wave.seeds.joined(separator: ", ")
+            print("[\(position)] \(item.data.wave.name) | id=\(item.id) | style=\(item.style) | seeds=\(seeds)")
+        }
+    }
+
+    static func startRotorFromWheel(with api: YandexMusicClient) async throws {
+        let wheel = try await api.getWheel()
+        guard let item = wheel.items.first else {
+            print("Wheel returned no items")
+            return
+        }
+
+        let (_, batch) = try await api.createRotorSession(wheelItem: item, queue: [])
+        print("Started rotor from \(item.id)")
+        print("Seeds: \(item.data.wave.seeds.joined(separator: ", "))")
+        print("Tracks in first batch: \(batch.sequence.count)")
     }
 
     static func playLikedTracks(

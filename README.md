@@ -44,6 +44,14 @@ try data.data.write(to: URL(fileURLWithPath: "~/Music/track.flac"))
 let (sessionID, batch) = try await client.createRotorSession(
     settings: .onYourWave, queue: []
 )
+
+// Get Wave seed suggestions and start a radio session from one of them
+let wheel = try await client.getWheel()
+let item = wheel.items[0]
+let (wheelSessionID, wheelBatch) = try await client.createRotorSession(
+    wheelItem: item,
+    queue: []
+)
 ```
 
 ## Features
@@ -52,6 +60,7 @@ let (sessionID, batch) = try await client.createRotorSession(
 - **Library** — liked tracks, albums, artists; personal playlists
 - **Search** — mixed results across all content types
 - **Download** — resolve download URLs, decrypt `encraw` streams (AES-CTR), partial downloads
+- **Wheel** — get Wave seed suggestions for Smart Radio sessions
 - **Codecs & Quality** — FLAC, AAC, HE-AAC, MP3 at lossless / normal / low
 - **Smart Radio (Rotor)** — create sessions, get track batches, send playback feedback
 - **URL Parsing** — typed parsing of Yandex Music share links
@@ -64,6 +73,8 @@ The included `Playground` target demonstrates real-world usage:
 swift run Playground search "The Beatles"
 swift run Playground liked
 swift run Playground rotor
+swift run Playground wheel
+swift run Playground wheel-rotor
 ```
 
 Set the `YA_MUSIC_API_TOKEN` environment variable before running.
