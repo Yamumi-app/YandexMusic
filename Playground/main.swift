@@ -79,6 +79,11 @@ struct Playground {
                     fatalError("Usage: yandexmusic-playground download <url>")
                 }
                 try await download(with: api, link: CommandLine.arguments[2])
+            case "download-album":
+                guard CommandLine.arguments.count >= 3 else {
+                    fatalError("Usage: yandexmusic-playground download-album <album-url>")
+                }
+                try await downloadAlbum(with: api, link: CommandLine.arguments[2])
             default:
                 fatalError("Unknown subcommand: \(subcommand)")
             }
@@ -138,22 +143,7 @@ struct Playground {
                 to: storagePath
             )
         case .album(albumID: let albumID):
-            let album = try await api.getAlbumWithTracks(albumID: albumID)
-            let albumPath = storagePath.appendingPathComponent(
-                safeFileName(album.title ?? "album-\(albumID)")
-            )
-            try FileManager.default.createDirectory(
-                at: albumPath,
-                withIntermediateDirectories: true
-            )
-            for track in album.allTracks {
-                try await downloadTrack(
-                    with: api,
-                    trackID: track.id.value,
-                    track: track,
-                    to: albumPath
-                )
-            }
+            try await downloadAlbum(with: api, albumID: albumID, to: storagePath)
         case .playlist(uuid: let uuid):
             let playlist = try await api.getPlaylist(uuid: uuid)
             try await downloadPlaylist(playlist, with: api, to: storagePath)
@@ -175,6 +165,50 @@ struct Playground {
                     to: artistPath
                 )
             }
+        }
+    }
+
+    static func downloadAlbum(
+        with api: YandexMusicClient,
+        link: String
+    ) async throws {
+        guard let url = YandexMusicURL(link), case .album(albumID: let albumID) = url else {
+            fatalError("Usage: yandexmusic-playground download-album <album-url>")
+        }
+
+        let storagePath = Self().demoStoragePath.appendingPathComponent("download")
+        try FileManager.default.createDirectory(
+            at: storagePath,
+            withIntermediateDirectories: true
+        )
+        try await downloadAlbum(with: api, albumID: albumID, to: storagePath)
+    }
+
+    static func downloadAlbum(
+        with api: YandexMusicClient,
+        albumID: String,
+        to storagePath: URL
+    ) async throws {
+        let album = try await api.getAlbumWithTracks(albumID: albumID)
+        let albumPath = storagePath.appendingPathComponent(
+            safeFileName(album.title ?? "album-\(albumID)")
+        )
+        try FileManager.default.createDirectory(
+            at: albumPath,
+            withIntermediateDirectories: true
+        )
+
+        let tracks = album.allTracks
+        let numberWidth = max(2, String(tracks.count).count)
+        for (index, track) in tracks.enumerated() {
+            let trackNumber = String(format: "%0*d", numberWidth, index + 1)
+            try await downloadTrack(
+                with: api,
+                trackID: track.id.value,
+                track: track,
+                to: albumPath,
+                prefix: trackNumber
+            )
         }
     }
 
@@ -209,14 +243,16 @@ struct Playground {
         with api: YandexMusicClient,
         trackID: String,
         track: Track?,
-        to storagePath: URL
+        to storagePath: URL,
+        prefix: String? = nil
     ) async throws {
         print("Downloading track \(trackID)")
         let (quality, trackData) = try await getBestTrackData(with: api, id: trackID)
         let fileName = fileName(
             for: track,
             trackID: trackID,
-            fileExtension: trackData.codec.fileExtension
+            fileExtension: trackData.codec.fileExtension,
+            prefix: prefix
         )
         let trackURL = storagePath.appendingPathComponent(fileName)
         try trackData.data.write(to: trackURL)
@@ -243,12 +279,17 @@ struct Playground {
     static func fileName(
         for track: Track?,
         trackID: String,
-        fileExtension: String
+        fileExtension: String,
+        prefix: String? = nil
     ) -> String {
         let title = track?.title ?? trackID
         let artists = track?.artistNames ?? ""
         let baseName = artists.isEmpty ? title : "\(artists) - \(title)"
-        return "\(safeFileName(baseName)) [\(safeFileName(trackID))].\(fileExtension)"
+        let name = "\(safeFileName(baseName)) [\(safeFileName(trackID))].\(fileExtension)"
+        guard let prefix else {
+            return name
+        }
+        return "\(prefix) - \(name)"
     }
 
     static func safeFileName(_ value: String) -> String {
