@@ -32,7 +32,7 @@ public struct WheelItemData: Sendable, Decodable {
 
 public struct WheelWave: Sendable, Decodable {
     public let name: String
-    public let description: String
+    public let description: String?
     public let seeds: [String]
 }
 
