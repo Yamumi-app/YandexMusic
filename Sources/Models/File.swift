@@ -65,6 +65,11 @@ public struct FileDataRange: Sendable, Codable {
     public let start: Int
     public let end: Int?
 
+    public init(start: Int, end: Int?) {
+        self.start = start
+        self.end = end
+    }
+
     /// Full range of the file bytes.
     public static let full: FileDataRange = Self(start: 0, end: nil)
 
